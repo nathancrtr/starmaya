@@ -8,5 +8,8 @@
     "dev:daemon": "pnpm --filter @starmaya/daemon dev",
     "dev:server": "pnpm --filter @starmaya/server dev",
     "dev:client": "pnpm --filter @starmaya/client dev"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17"
   }
 }
