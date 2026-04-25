@@ -1,0 +1,12 @@
+{
+  "name": "starmaya",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean",
+    "dev:daemon": "pnpm --filter @starmaya/daemon dev",
+    "dev:server": "pnpm --filter @starmaya/server dev",
+    "dev:client": "pnpm --filter @starmaya/client dev"
+  }
+}

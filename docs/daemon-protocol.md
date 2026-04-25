@@ -113,6 +113,26 @@ Fields:
 
 The web server uses these to drive the UI's connection-status indicator and to annotate the roast record if the hardware drops mid-roast.
 
+### `sensor_fault`
+
+Sent when the daemon receives a response to `READ` but the thermocouple value indicates a sensor-level fault (open circuit, short, out-of-range). The serial link is healthy — the device responded — but the reading is not usable.
+
+```json
+{"type": "sensor_fault", "ts": 1729123456789, "raw": "-1,0,0,0", "reason": "bt_open_circuit"}
+```
+
+Fields:
+
+- `ts` (integer, Unix milliseconds, UTC) — timestamp of the failed read.
+- `raw` (string) — the raw response line from the Arduino, for diagnostics.
+- `reason` (string) — a short classification. Known values: `"bt_open_circuit"`, `"bt_short_gnd"`, `"bt_short_vcc"`, `"bt_out_of_range"`, `"bt_nan"`.
+
+A `sensor_fault` does not trigger a `device_status` transition. The device is responding; the problem is at the thermocouple level.
+
+The web server uses this to show a "check thermocouple" warning in the UI, distinct from the "sensor offline" indicator driven by `device_status`.
+
+See `daemon-internals.md` for detection rules and the full fault classification table.
+
 ### `pong`
 
 Response to a `ping`. See "Heartbeat."
@@ -289,6 +309,6 @@ There is an 8-second gap in readings, bracketed by status messages. The web serv
 
 These are acknowledged as not-yet-fully-specified and belong to later design work rather than this document:
 
-- **Daemon internals.** How the daemon's serial-polling loop is structured — timing, request/response pairing, read-timeout handling, the state machine for device-status transitions. This is the next design chunk after this document.
+- **Daemon internals.** Specified in `daemon-internals.md` — serial-polling loop, timing, read-timeout handling, device-status state machine, response parsing, and `sensor_fault` classification.
 - **Multi-client fanout details.** The per-client send queue model is sketched above; the exact backpressure behavior when a client is slow (drop oldest? disconnect?) needs to be pinned down before multi-client is a tested path.
 - **Client-side event buffering.** The browser's retry and reconciliation logic for event POSTs during network blips is a separate design from this protocol.
