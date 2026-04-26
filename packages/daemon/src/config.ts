@@ -10,6 +10,14 @@ export interface DaemonConfig {
   maxClients: number;
   reconnectBackoffInitialMs: number;
   reconnectBackoffMaxMs: number;
+  /**
+   * Milliseconds to wait after opening the serial port before issuing the first
+   * READ. Arduino Uno (and any board where DTR is wired to RESET) reboots when
+   * the port is opened, and the bootloader + sketch setup() take ~1.5–2s.
+   * Set to 0 for boards that don't reset on open (Leonardo, ESP32, hardware
+   * mod with a 10µF cap on RESET).
+   */
+  postOpenDelayMs: number;
   btMinPlausibleC: number;
   btMaxPlausibleC: number;
   /** If true, generate a synthetic temperature curve instead of opening the serial port. */
@@ -25,6 +33,7 @@ const DEFAULTS: DaemonConfig = {
   maxClients: 2,
   reconnectBackoffInitialMs: 500,
   reconnectBackoffMaxMs: 10000,
+  postOpenDelayMs: 2500,
   btMinPlausibleC: -50,
   btMaxPlausibleC: 500,
   mockSerial: false,

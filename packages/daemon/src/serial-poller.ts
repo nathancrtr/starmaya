@@ -93,12 +93,28 @@ export class SerialPoller extends EventEmitter {
       await this.openPort();
     } catch (err) {
       const reason = `port_open_failed: ${(err as Error).message}`;
+      // Log every attempt's reason — setState only emits on actual state
+      // transitions, so when we're stuck in "error" we'd otherwise lose
+      // visibility into why each retry is failing.
+      this.log("warn", "port_open_failed", {
+        path: this.cfg.serialPath,
+        error: (err as Error).message,
+      });
       this.setState("error", reason);
       this.scheduleReconnect();
       return;
     }
 
-    // Port opened. Confirm with a test READ before declaring connected.
+    // Port opened. Wait for the device to finish booting (Arduino Uno
+    // resets on DTR-on-open and takes ~1.5–2s to come back up) before
+    // confirming with a test READ.
+    if (this.cfg.postOpenDelayMs > 0) {
+      this.log("info", "post_open_delay", { delay_ms: this.cfg.postOpenDelayMs });
+      await new Promise((resolve) => setTimeout(resolve, this.cfg.postOpenDelayMs));
+      if (this.stopped) return;
+    }
+
+    // Confirm with a test READ before declaring connected.
     try {
       const reading = await this.pollOnce();
       this.handleReading(reading);
