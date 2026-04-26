@@ -51,7 +51,11 @@ pnpm install
 pnpm -r build
 ```
 
-After build, the daemon's entry point is at `/opt/starmaya/packages/daemon/dist/main.js` and the server's at `/opt/starmaya/packages/server/dist/main.js` — both referenced by the systemd units.
+After build, the entry points are at:
+
+- `/opt/starmaya/packages/daemon/dist/main.js` — the daemon (referenced by the systemd unit).
+- `/opt/starmaya/packages/server/dist/main.js` — the web server (referenced by the systemd unit).
+- `/opt/starmaya/packages/client/dist/` — the built React app. Fastify serves this directory at `/` automatically, so the same `:8080` port serves both the API and the UI.
 
 Then transfer ownership to `roaster`:
 
@@ -126,7 +130,9 @@ curl http://<pi-ip>:8080/api/roasts
 # {"roasts":[]}
 ```
 
-If you get the JSON response, open `http://<pi-ip>:8080/` in a browser. The live page should show the BT readout updating at 1 Hz from the real thermocouple.
+If you get the JSON response, open `http://<pi-ip>:8080/` in a browser — Fastify serves the built React client at `/` and the API under `/api/*`, so the UI and the data come from the same origin (no proxy, no CORS). The live page should show the BT readout updating at 1 Hz from the real thermocouple.
+
+If you get a `client_bundle_not_served` line in the server log instead of `client_bundle_served`, the client wasn't built. Re-run `pnpm -r build` from `/opt/starmaya` and restart `roaster-web.service`.
 
 ## 10. Tailscale (for remote access)
 
@@ -169,3 +175,6 @@ Daemon and web server are out of sync. Pull and rebuild on both, then restart bo
 
 **Browser can't reach the Pi.**
 Confirm the web server is bound to `0.0.0.0:8080` (it is by default). Check that the Pi's firewall isn't blocking — Raspberry Pi OS has none by default, but UFW or iptables would. Verify with `ss -tlnp | grep 8080` on the Pi.
+
+**Pi seems flaky / disconnects mid-roast / WiFi won't autoconnect on boot.**
+Check the power supply. Run `vcgencmd get_throttled` — anything other than `0x0` indicates undervolt at some point. The Pi 4B is sensitive to marginal power, and an under-spec'd PSU shows up as cascading symptoms (WiFi failures, USB device disconnects, SD card issues). Use the official Raspberry Pi 27W USB-C PSU and a short, decent USB-C cable. Don't power the Arduino off the Pi's USB if you can avoid it — a separate wall adapter or powered hub takes that load off the Pi.
