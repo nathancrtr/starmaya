@@ -39,18 +39,41 @@ const EVENT_COLOR: Record<RoastEvent, string> = {
 export function Chart({ points, markers = [], height = 320 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const markersRef = useRef<ChartMarker[]>(markers);
 
-  // ── Create the plot once ──────────────────────────────────────────
+  // Keep markers ref in sync without re-creating the plot, and trigger a
+  // redraw so the marker overlay updates immediately.
+  useEffect(() => {
+    markersRef.current = markers;
+    plotRef.current?.redraw();
+  }, [markers]);
+
+  // Create-or-recreate the plot whenever points or height change. This is a
+  // deliberate trade for live streaming — uPlot's setData on a plot that was
+  // born with empty data can leave its scales unresolved (we observed
+  // scales.x._min/_max staying null indefinitely). Recreating per render is
+  // cheap (uPlot is tuned for it), and constructing with non-empty data
+  // every time makes auto-scaling reliable.
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el || points.length === 0) {
+      // No data yet — make sure any prior plot is cleaned up so the container
+      // is empty. Real points will trigger a fresh build.
+      if (plotRef.current) {
+        plotRef.current.destroy();
+        plotRef.current = null;
+      }
+      return;
+    }
+
+    const xs = points.map((p) => p.tSec);
+    const ys = points.map((p) => p.btC);
 
     const opts: uPlot.Options = {
       width: el.clientWidth,
       height,
       scales: {
         x: { time: false },
-        y: { auto: true },
       },
       axes: [
         { label: "time (s)" },
@@ -63,7 +86,6 @@ export function Chart({ points, markers = [], height = 320 }: Props) {
       hooks: {
         draw: [
           (u) => {
-            // Draw event markers as vertical lines.
             const ctx = u.ctx;
             const top = u.bbox.top;
             const bottom = u.bbox.top + u.bbox.height;
@@ -86,38 +108,17 @@ export function Chart({ points, markers = [], height = 320 }: Props) {
       },
     };
 
-    const plot = new uPlot(opts, [[], []], el);
+    if (plotRef.current) {
+      plotRef.current.destroy();
+    }
+    const plot = new uPlot(opts, [xs, ys], el);
     plotRef.current = plot;
 
-    // Resize with the container.
-    const observer = new ResizeObserver(() => {
-      plot.setSize({ width: el.clientWidth, height });
-    });
-    observer.observe(el);
-
     return () => {
-      observer.disconnect();
       plot.destroy();
-      plotRef.current = null;
+      if (plotRef.current === plot) plotRef.current = null;
     };
-  }, [height]);
-
-  // ── Push new data on every prop change ────────────────────────────
-  // Keep markers in a ref so the draw hook (created once above) sees the
-  // latest set without us re-creating the plot.
-  const markersRef = useRef<ChartMarker[]>(markers);
-  useEffect(() => {
-    markersRef.current = markers;
-    plotRef.current?.redraw();
-  }, [markers]);
-
-  useEffect(() => {
-    const plot = plotRef.current;
-    if (!plot) return;
-    const xs = points.map((p) => p.tSec);
-    const ys = points.map((p) => p.btC);
-    plot.setData([xs, ys]);
-  }, [points]);
+  }, [points, height]);
 
   return <div ref={containerRef} style={{ width: "100%", height }} />;
 }
