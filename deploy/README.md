@@ -57,11 +57,7 @@ After build, the entry points are at:
 - `/opt/starmaya/packages/server/dist/main.js` — the web server (referenced by the systemd unit).
 - `/opt/starmaya/packages/client/dist/` — the built React app. Fastify serves this directory at `/` automatically, so the same `:8080` port serves both the API and the UI.
 
-Then transfer ownership to `roaster`:
-
-```bash
-sudo chown -R roaster:roaster /opt/starmaya
-```
+Leave the source tree owned by your normal user. Default permissions (0755 directories, 0644 files) make everything world-readable, which is all the `roaster` service needs. **Do not** chown the tree to `roaster` — `roaster` is an unprivileged service account with no shell and no home, and giving it ownership just makes future `git pull`s require a privilege dance.
 
 ## 6. Create runtime directories
 
@@ -149,11 +145,13 @@ If you want a friendlier URL, enable MagicDNS in the Tailscale admin console and
 
 ## 11. Updating
 
+Run as your normal user (the operator with git access), not as `roaster`:
+
 ```bash
 cd /opt/starmaya
-sudo -u roaster git pull
-sudo -u roaster pnpm install
-sudo -u roaster pnpm -r build
+git pull
+pnpm install
+pnpm -r build
 sudo systemctl restart roaster-daemon.service roaster-web.service
 ```
 
