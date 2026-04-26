@@ -15,6 +15,10 @@
 # Genuine Arduino Uno R3
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", SYMLINK+="behmor-arduino"
 
+# Genuine Arduino Uno R3 — alternate "dog hunter AG" VID, shipped during
+# the 2014–15 Arduino LLC vs Arduino SRL trademark dispute.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2a03", ATTRS{idProduct}=="0043", SYMLINK+="behmor-arduino"
+
 # Older Arduino Uno
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0001", SYMLINK+="behmor-arduino"
 
