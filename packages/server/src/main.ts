@@ -6,6 +6,7 @@ import { DaemonClient } from "./daemon-client.js";
 import { RoastManager } from "./roast-manager.js";
 import { registerStreamRoute } from "./routes/stream.js";
 import { registerRoastRoutes } from "./routes/roasts.js";
+import { registerStaticRoute } from "./routes/static.js";
 import type { ReadingMessage } from "@starmaya/shared";
 
 interface CliArgs {
@@ -61,6 +62,9 @@ async function main(): Promise<void> {
   const fastify = Fastify({ logger: false });
   registerStreamRoute(fastify, { daemonClient, roastManager });
   registerRoastRoutes(fastify, { db, roastManager });
+  // Static client + SPA fallback. No-op in dev when the client hasn't been
+  // built (Vite serves the UI on its own port).
+  await registerStaticRoute(fastify, log);
 
   daemonClient.start();
   await fastify.listen({ port: cfg.httpPort, host: "0.0.0.0" });
