@@ -1,0 +1,297 @@
+/* ── Reset / base ──────────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  color: #222;
+  background: #fafafa;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+}
+
+/* ── App layout ────────────────────────────────────────────────── */
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.app__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.app__nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.app__nav a {
+  text-decoration: none;
+  color: #555;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.app__nav a.active {
+  color: #222;
+  background: #eee;
+}
+
+/* ── Roast page ────────────────────────────────────────────────── */
+
+.readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.readout__bt {
+  font-size: 4rem;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.readout__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.readout__elapsed {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  color: #555;
+}
+
+.status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status--connected {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status--disconnected {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status--error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.controls {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.controls__name {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+}
+
+.controls__active-name {
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+}
+
+.controls__events {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.btn {
+  padding: 0.75rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--charge {
+  background: #1f9e3d;
+  color: #fff;
+  border-color: #1f9e3d;
+  width: 100%;
+  padding: 1rem;
+}
+
+.btn--dry_end {
+  background: #fff7e0;
+  border-color: #d2a106;
+  color: #6b5500;
+}
+
+.btn--fc_start {
+  background: #ffe0e0;
+  border-color: #d63d3d;
+  color: #6b1f1f;
+}
+
+.btn--fc_end {
+  background: #ffd0d0;
+  border-color: #9c1f1f;
+  color: #6b1f1f;
+}
+
+.btn--drop {
+  background: #1f44d6;
+  color: #fff;
+  border-color: #1f44d6;
+}
+
+.error {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background: #f8d7da;
+  color: #721c24;
+  border-radius: 4px;
+}
+
+.muted {
+  color: #777;
+  padding: 1rem;
+}
+
+.chart-section {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+/* ── History ───────────────────────────────────────────────────── */
+
+.history__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.history__item {
+  border-bottom: 1px solid #eee;
+}
+
+.history__link {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.75rem 0.5rem;
+  text-decoration: none;
+  color: #222;
+}
+
+.history__link:hover {
+  background: #f0f0f0;
+}
+
+.history__name {
+  font-weight: 500;
+}
+
+.history__meta {
+  color: #777;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Roast detail ──────────────────────────────────────────────── */
+
+.roast-detail__header {
+  margin-bottom: 1rem;
+}
+
+.roast-detail__header h2 {
+  margin: 0 0 0.25rem 0;
+}
+
+.roast-detail__meta {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.roast-detail__back {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: #555;
+  text-decoration: none;
+}
+
+.roast-detail__events {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem;
+}
+
+.roast-detail__events li {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.event-name {
+  font-weight: 500;
+}
+
+.event-time {
+  font-variant-numeric: tabular-nums;
+  color: #555;
+}
