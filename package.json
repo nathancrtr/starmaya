@@ -11,5 +11,11 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.17"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@serialport/bindings-cpp",
+      "better-sqlite3"
+    ]
   }
 }
