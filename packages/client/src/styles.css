@@ -74,11 +74,24 @@ input {
   margin-bottom: 1rem;
 }
 
+.readout__temps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .readout__bt {
   font-size: 4rem;
   font-weight: 300;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.readout__ror {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  color: #e07040;
+  font-weight: 500;
 }
 
 .readout__meta {
