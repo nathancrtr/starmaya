@@ -308,3 +308,131 @@ input {
   font-variant-numeric: tabular-nums;
   color: #555;
 }
+
+/* ── Mobile responsive (≤640px) ───────────────────────────────── */
+
+@media (max-width: 640px) {
+  .app {
+    padding: 0.5rem;
+  }
+
+  .app__header {
+    padding-bottom: 0.35rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .app__header h1 {
+    font-size: 1.2rem;
+  }
+
+  /* Readout: stack vertically instead of side-by-side */
+  .readout {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .readout__bt {
+    font-size: 2.75rem;
+  }
+
+  .readout__meta {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .readout__elapsed {
+    font-size: 1.5rem;
+  }
+
+  /* Event buttons: 2-column grid with large touch targets */
+  .controls__events {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .btn {
+    min-height: 60px;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn--charge {
+    min-height: 60px;
+    font-size: 1.1rem;
+  }
+
+  /* Chart: shorter for portrait phones */
+  .chart-section {
+    padding: 0.25rem;
+  }
+
+  /* History list: more breathing room for touch */
+  .history__link {
+    padding: 1rem 0.5rem;
+  }
+
+  /* Roast detail */
+  .roast-detail__events {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ── Roast mode (active roast) ────────────────────────────────── */
+/* Applied to <body> when a roast is in progress. Hides navigation
+   chrome and maximizes the control surface for use at the roaster
+   with busy hands.                                                */
+
+.roast-mode .app__header {
+  display: none;
+}
+
+.roast-mode .app {
+  padding: 0.5rem;
+}
+
+/* In roast mode on mobile, go even larger for quick glances */
+@media (max-width: 640px) {
+  .roast-mode .readout {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .roast-mode .readout__bt {
+    font-size: 3.5rem;
+  }
+
+  .roast-mode .readout__elapsed {
+    font-size: 2rem;
+  }
+
+  .roast-mode .readout__meta {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  /* Status indicator becomes a compact corner pill */
+  .roast-mode .status {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.35rem;
+  }
+
+  /* Larger touch targets in roast mode */
+  .roast-mode .btn {
+    min-height: 68px;
+    font-size: 1.1rem;
+  }
+
+  .roast-mode .controls {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .roast-mode .controls__active-name {
+    margin-bottom: 0.5rem;
+  }
+}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RoastEvent } from "@starmaya/shared";
 import { useStream } from "../hooks/useStream.ts";
 import { Chart, type ChartPoint, type ChartMarker } from "../components/Chart.tsx";
@@ -15,6 +15,18 @@ export function RoastPage() {
   const [error, setError] = useState<string | null>(null);
 
   const active = stream.activeRoast;
+
+  // Toggle a CSS class on <body> so the rest of the page (header, nav) can
+  // adapt when a roast is in progress — "roast mode" hides chrome and
+  // maximizes the control surface for hands-busy use at the roaster.
+  useEffect(() => {
+    if (active) {
+      document.body.classList.add("roast-mode");
+    } else {
+      document.body.classList.remove("roast-mode");
+    }
+    return () => document.body.classList.remove("roast-mode");
+  }, [active]);
   const recordedEvents = useMemo(
     () => new Set(stream.events.map((e) => e.event)),
     [stream.events],
