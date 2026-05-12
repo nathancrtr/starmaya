@@ -18,6 +18,8 @@ export interface ChartMarker {
 interface Props {
   points: ChartPoint[];
   markers?: ChartMarker[];
+  /** Rate of Rise values (°C/min) aligned 1:1 with `points`. `null` = gap. */
+  rorValues?: (number | null)[];
   /** Optional pixel height. Width follows the container. Default 320. */
   height?: number;
 }
@@ -31,12 +33,16 @@ const EVENT_COLOR: Record<RoastEvent, string> = {
   DROP: "#1f44d6",
 };
 
+/** RoR line color — warm orange, distinct from the dark BT line. */
+const ROR_COLOR = "#e07040";
+
 /**
- * Live + historical BT chart. Wraps uPlot. The component is "uncontrolled"
- * w.r.t. uPlot — we manage the instance via refs and feed it new data via
- * setData() rather than re-creating it on every prop change.
+ * Live + historical BT chart with optional RoR overlay. Wraps uPlot. The
+ * component is "uncontrolled" w.r.t. uPlot — we manage the instance via refs
+ * and feed it new data via setData() rather than re-creating it on every prop
+ * change.
  */
-export function Chart({ points, markers = [], height = 320 }: Props) {
+export function Chart({ points, markers = [], rorValues, height = 320 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const markersRef = useRef<ChartMarker[]>(markers);
@@ -69,19 +75,49 @@ export function Chart({ points, markers = [], height = 320 }: Props) {
     const xs = points.map((p) => p.tSec);
     const ys = points.map((p) => p.btC);
 
+    // Build RoR data array for uPlot (use undefined for null gaps).
+    const hasRoR = rorValues && rorValues.length === points.length;
+    const rorData: (number | null | undefined)[] = hasRoR
+      ? rorValues.map((v) => (v === null ? undefined : v))
+      : xs.map(() => undefined);
+
     const opts: uPlot.Options = {
       width: el.clientWidth,
       height,
       scales: {
         x: { time: false },
+        ror: {
+          auto: true,
+          range: (_u, min, max) => {
+            // Give the RoR axis a little padding and a sane floor.
+            const lo = Math.min(min ?? 0, 0);
+            const hi = Math.max(max ?? 20, 5);
+            return [lo - 1, hi + 1];
+          },
+        },
       },
       axes: [
         { label: "time (s)" },
         { label: "BT (°C)" },
+        {
+          side: 1,       // right side
+          scale: "ror",
+          label: "RoR (°C/min)",
+          stroke: ROR_COLOR,
+          grid: { show: false },
+        },
       ],
       series: [
         {}, // x
         { label: "BT", stroke: "#222", width: 2 },
+        {
+          label: "RoR",
+          stroke: ROR_COLOR,
+          width: 1.5,
+          scale: "ror",
+          dash: [6, 3],
+          spanGaps: false,
+        },
       ],
       hooks: {
         draw: [
@@ -111,14 +147,14 @@ export function Chart({ points, markers = [], height = 320 }: Props) {
     if (plotRef.current) {
       plotRef.current.destroy();
     }
-    const plot = new uPlot(opts, [xs, ys], el);
+    const plot = new uPlot(opts, [xs, ys, rorData as number[]], el);
     plotRef.current = plot;
 
     return () => {
       plot.destroy();
       if (plotRef.current === plot) plotRef.current = null;
     };
-  }, [points, height]);
+  }, [points, rorValues, height]);
 
   return <div ref={containerRef} style={{ width: "100%", height }} />;
 }

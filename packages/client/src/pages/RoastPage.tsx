@@ -3,6 +3,7 @@ import type { RoastEvent } from "@starmaya/shared";
 import { useStream } from "../hooks/useStream.ts";
 import { Chart, type ChartPoint, type ChartMarker } from "../components/Chart.tsx";
 import { api } from "../api.ts";
+import { computeRoR } from "../ror.ts";
 
 /** Events that go through the generic events endpoint (not CHARGE or DROP). */
 const MID_ROAST_EVENTS: RoastEvent[] = ["DRY_END", "FC_START", "FC_END"];
@@ -35,6 +36,17 @@ export function RoastPage() {
       event: e.event,
     }));
   }, [stream.events, active]);
+
+  // Compute Rate of Rise from the chart points.
+  const rorValues = useMemo(() => computeRoR(chartPoints), [chartPoints]);
+
+  // Latest non-null RoR value for the numeric readout.
+  const currentRoR = useMemo(() => {
+    for (let i = rorValues.length - 1; i >= 0; i--) {
+      if (rorValues[i] !== null) return rorValues[i];
+    }
+    return null;
+  }, [rorValues]);
 
   const elapsedSec = active && stream.lastTick
     ? Math.max(0, (stream.lastTick.ts - active.chargeTs) / 1000)
@@ -104,8 +116,15 @@ export function RoastPage() {
   return (
     <div className="roast-page">
       <section className="readout">
-        <div className="readout__bt">
-          {stream.lastTick ? `${stream.lastTick.btC.toFixed(1)}°C` : "—"}
+        <div className="readout__temps">
+          <div className="readout__bt">
+            {stream.lastTick ? `${stream.lastTick.btC.toFixed(1)}°C` : "—"}
+          </div>
+          {active && (
+            <div className="readout__ror">
+              {currentRoR !== null ? `↑ ${currentRoR.toFixed(1)} °C/min` : "—"}
+            </div>
+          )}
         </div>
         <div className="readout__meta">
           <span className={`status status--${stream.deviceStatus}`}>
@@ -164,7 +183,7 @@ export function RoastPage() {
       </section>
 
       <section className="chart-section">
-        <Chart points={chartPoints} markers={chartMarkers} />
+        <Chart points={chartPoints} markers={chartMarkers} rorValues={rorValues} />
       </section>
     </div>
   );

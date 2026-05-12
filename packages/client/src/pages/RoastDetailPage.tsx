@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, type RoastDetail } from "../api.ts";
 import { Chart, type ChartPoint, type ChartMarker } from "../components/Chart.tsx";
+import { computeRoR } from "../ror.ts";
 
 export function RoastDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,18 +27,28 @@ export function RoastDetailPage() {
     };
   }, [id]);
 
+  const points: ChartPoint[] = useMemo(() => {
+    if (!detail) return [];
+    return detail.readings.map((r) => ({
+      tSec: r.tMs / 1000,
+      btC: r.btC,
+    }));
+  }, [detail]);
+
+  const markers: ChartMarker[] = useMemo(() => {
+    if (!detail) return [];
+    return detail.events.map((e) => ({
+      tSec: (e.ts - detail.roast.chargeTs) / 1000,
+      event: e.event,
+    }));
+  }, [detail]);
+
+  // Compute RoR once from persisted readings.
+  const rorValues = useMemo(() => computeRoR(points), [points]);
+
   if (!id) return <div className="error">Missing roast id.</div>;
   if (error) return <div className="error">Failed to load roast: {error}</div>;
   if (detail === null) return <div className="muted">Loading…</div>;
-
-  const points: ChartPoint[] = detail.readings.map((r) => ({
-    tSec: r.tMs / 1000,
-    btC: r.btC,
-  }));
-  const markers: ChartMarker[] = detail.events.map((e) => ({
-    tSec: (e.ts - detail.roast.chargeTs) / 1000,
-    event: e.event,
-  }));
 
   return (
     <div className="roast-detail">
@@ -51,7 +62,7 @@ export function RoastDetailPage() {
         </div>
         <Link to="/roasts" className="roast-detail__back">← Back to history</Link>
       </header>
-      <Chart points={points} markers={markers} />
+      <Chart points={points} markers={markers} rorValues={rorValues} />
       <ul className="roast-detail__events">
         {detail.events.map((e) => (
           <li key={e.id}>
