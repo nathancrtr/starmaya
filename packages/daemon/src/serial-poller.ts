@@ -8,11 +8,21 @@ import type {
   SensorFaultMessage,
 } from "@starmaya/shared";
 import { intervalMs, readTimeoutMs, type DaemonConfig } from "./config.js";
+import type { DeviceAdapter } from "./adapters/types.js";
 
 /**
- * Owns the serial port and runs the polling loop. Emits typed events that the
- * socket server forwards to connected clients. Implements the state machine
+ * Owns the serial port, runs the polling/read loop, and emits typed events
+ * that the socket server forwards to clients. Implements the state machine
  * documented in docs/daemon-internals.md.
+ *
+ * Protocol semantics live in an injected {@link DeviceAdapter}; this class
+ * is intentionally hardware-agnostic. It supports two adapter modes:
+ *
+ *   - `request-response`: poller drives the cadence, writes
+ *     `adapter.getPollCommand()` each tick and feeds the reply line to
+ *     `adapter.parse()`.
+ *   - `streaming`: device drives the cadence; every received line is
+ *     forwarded to `adapter.parse()` directly.
  *
  * Events:
  *   - "reading"       (msg: ReadingMessage)
@@ -43,6 +53,7 @@ export class SerialPoller extends EventEmitter {
 
   constructor(
     private readonly cfg: DaemonConfig,
+    private readonly adapter: DeviceAdapter,
     private readonly log: (level: string, msg: string, extra?: object) => void,
   ) {
     super();
@@ -106,26 +117,46 @@ export class SerialPoller extends EventEmitter {
     }
 
     // Port opened. Wait for the device to finish booting (Arduino Uno
-    // resets on DTR-on-open and takes ~1.5–2s to come back up) before
-    // confirming with a test READ.
+    // resets on DTR-on-open and takes ~1.5–2s to come back up). Devices
+    // that don't reset on open can configure postOpenDelayMs to 0.
     if (this.cfg.postOpenDelayMs > 0) {
       this.log("info", "post_open_delay", { delay_ms: this.cfg.postOpenDelayMs });
       await new Promise((resolve) => setTimeout(resolve, this.cfg.postOpenDelayMs));
       if (this.stopped) return;
     }
 
-    // Confirm with a test READ before declaring connected.
+    // Adapter-specific handshake (banner read, sample-rate config, etc.).
     try {
-      const reading = await this.pollOnce();
-      this.handleReading(reading);
-      this.setState("connected");
-      this.reconnectDelayMs = this.cfg.reconnectBackoffInitialMs; // reset backoff
-      this.scheduleNextPoll(intervalMs(this.cfg));
+      await this.adapter.onPortOpened?.();
     } catch (err) {
-      this.log("warn", "initial_read_failed", { error: (err as Error).message });
-      this.setState("disconnected", `initial_read_failed: ${(err as Error).message}`);
+      this.log("warn", "adapter_init_failed", { error: (err as Error).message });
+      this.setState("disconnected", `adapter_init_failed: ${(err as Error).message}`);
       this.closePort();
       this.scheduleReconnect();
+      return;
+    }
+    if (this.stopped) return;
+
+    if (this.adapter.mode === "request-response") {
+      // Confirm with a test poll before declaring connected.
+      try {
+        const reading = await this.pollOnce();
+        this.handleReading(reading);
+        this.setState("connected");
+        this.reconnectDelayMs = this.cfg.reconnectBackoffInitialMs; // reset backoff
+        this.scheduleNextPoll(intervalMs(this.cfg));
+      } catch (err) {
+        this.log("warn", "initial_read_failed", { error: (err as Error).message });
+        this.setState("disconnected", `initial_read_failed: ${(err as Error).message}`);
+        this.closePort();
+        this.scheduleReconnect();
+      }
+    } else {
+      // Streaming: port-open + onPortOpened succeeding is the strongest
+      // signal until real data arrives. Lines are processed as they come
+      // in via onLine().
+      this.setState("connected");
+      this.reconnectDelayMs = this.cfg.reconnectBackoffInitialMs;
     }
   }
 
@@ -240,6 +271,12 @@ export class SerialPoller extends EventEmitter {
   }
 
   private pollOnce(): Promise<string> {
+    // Local capture so TypeScript narrows the union across the closure.
+    // Only ever reached from request-response paths; the guard is defensive.
+    const adapter = this.adapter;
+    if (adapter.mode !== "request-response") {
+      return Promise.reject(new Error("pollOnce called on non-request-response adapter"));
+    }
     return new Promise((resolve, reject) => {
       if (!this.port || !this.parser) {
         reject(new Error("port not open"));
@@ -254,7 +291,8 @@ export class SerialPoller extends EventEmitter {
         reject(new Error(`read timeout after ${readTimeoutMs(this.cfg)}ms`));
       }, readTimeoutMs(this.cfg));
       this.pending = { resolve, reject, timer };
-      this.port.write("READ\r\n", (err) => {
+      const cmd = adapter.getPollCommand();
+      this.port.write(cmd, (err) => {
         if (err) {
           this.failPending(err);
         }
@@ -263,7 +301,17 @@ export class SerialPoller extends EventEmitter {
   }
 
   private onLine(line: string): void {
-    if (!this.pending) return; // unsolicited line; ignore
+    if (this.adapter.mode === "streaming") {
+      // Drop lines arriving before we've declared connected, so emit
+      // ordering stays predictable for clients (device_status:connected
+      // is always the first thing they see after hello).
+      if (this.state !== "connected") return;
+      this.handleReading(line);
+      return;
+    }
+    // Request-response: resolve the in-flight read if any. Unsolicited
+    // lines (no pending) are dropped.
+    if (!this.pending) return;
     const p = this.pending;
     this.pending = null;
     clearTimeout(p.timer);
@@ -281,53 +329,38 @@ export class SerialPoller extends EventEmitter {
   // ── Response handling ─────────────────────────────────────────────
 
   /**
-   * Parse a line and emit the appropriate message. Returns the parsed
-   * reading on success, throws on transport-level failure (which the caller
-   * already catches).
+   * Delegate line parsing to the adapter, then stamp `ts` and emit the
+   * appropriate event. Adapter returning `null` means malformed — log and
+   * drop, preserving prior behavior.
    */
   private handleReading(line: string): void {
     const ts = Date.now();
-    const fields = line.trim().split(",");
-    if (fields.length < 2) {
+    const parsed = this.adapter.parse(line);
+    if (parsed === null) {
       this.log("warn", "malformed_response", { line });
       return;
     }
-
-    const btRaw = parseFloat(fields[1]!);
-    const fault = classifyBtFault(btRaw, this.cfg);
-    if (fault) {
-      const msg: SensorFaultMessage = {
-        type: "sensor_fault",
-        ts,
-        raw: line,
-        reason: fault,
-      };
-      this.emit("sensor_fault", msg);
-      return;
+    switch (parsed.kind) {
+      case "reading": {
+        const msg: ReadingMessage = {
+          type: "reading",
+          ts,
+          bt_c: parsed.bt_c,
+          et_c: parsed.et_c,
+        };
+        this.emit("reading", msg);
+        return;
+      }
+      case "fault": {
+        const msg: SensorFaultMessage = {
+          type: "sensor_fault",
+          ts,
+          raw: parsed.raw,
+          reason: parsed.reason,
+        };
+        this.emit("sensor_fault", msg);
+        return;
+      }
     }
-
-    const etRaw = fields[2] !== undefined ? parseFloat(fields[2]) : NaN;
-    const etC = Number.isFinite(etRaw) ? etRaw : null;
-
-    const msg: ReadingMessage = {
-      type: "reading",
-      ts,
-      bt_c: btRaw,
-      et_c: etC,
-    };
-    this.emit("reading", msg);
   }
-}
-
-/**
- * Classify a BT value against MAX31855 error codes and the configured
- * plausibility range. Returns a fault reason or null if the value is OK.
- */
-function classifyBtFault(bt: number, cfg: DaemonConfig): string | null {
-  if (Number.isNaN(bt)) return "bt_nan";
-  if (bt === -1) return "bt_open_circuit";
-  if (bt === -2) return "bt_short_gnd";
-  if (bt === -3) return "bt_short_vcc";
-  if (bt < cfg.btMinPlausibleC || bt > cfg.btMaxPlausibleC) return "bt_out_of_range";
-  return null;
 }

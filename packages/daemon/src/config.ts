@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs";
 
+/**
+ * Hardware adapter to instantiate at startup. Extend this union and the
+ * `makeAdapter` switch in main.ts when adding new device support.
+ */
+export type DeviceProfile = "tc4";
+
 /** Resolved daemon configuration. */
 export interface DaemonConfig {
   socketPath: string;
@@ -20,6 +26,8 @@ export interface DaemonConfig {
   postOpenDelayMs: number;
   btMinPlausibleC: number;
   btMaxPlausibleC: number;
+  /** Selects which hardware adapter the daemon instantiates. */
+  deviceProfile: DeviceProfile;
   /** If true, generate a synthetic temperature curve instead of opening the serial port. */
   mockSerial: boolean;
 }
@@ -36,6 +44,7 @@ const DEFAULTS: DaemonConfig = {
   postOpenDelayMs: 2500,
   btMinPlausibleC: -50,
   btMaxPlausibleC: 500,
+  deviceProfile: "tc4",
   mockSerial: false,
 };
 
