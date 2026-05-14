@@ -3,6 +3,7 @@ import { loadConfig, type DaemonConfig } from "./config.js";
 import { SerialPoller } from "./serial-poller.js";
 import { MockSerialPoller } from "./mock-serial-poller.js";
 import { SocketServer, type ReadingSource } from "./socket-server.js";
+import { TC4ArduinoAdapter } from "./adapters/tc4-arduino.js";
 
 interface CliArgs {
   configPath: string | undefined;
@@ -45,7 +46,8 @@ function makeSource(cfg: DaemonConfig, log: ReturnType<typeof makeLogger>): Read
     log("info", "using_mock_serial", {});
     return new MockSerialPoller(cfg, log);
   }
-  return new SerialPoller(cfg, log);
+  const adapter = new TC4ArduinoAdapter(cfg);
+  return new SerialPoller(cfg, adapter, log);
 }
 
 async function main(): Promise<void> {

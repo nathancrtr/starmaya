@@ -1,4 +1,4 @@
-import type { DeviceAdapter, ParseResult } from "./types.js";
+import type { RequestResponseDeviceAdapter, ParseResult } from "./types.js";
 
 /**
  * Configuration knobs the TC4 adapter needs at construction time. The shape
@@ -32,7 +32,7 @@ export interface TC4ArduinoAdapterConfig {
  *   - Anything else with fewer than 2 CSV fields is treated as malformed
  *     and silently ignored by the poller.
  */
-export class TC4ArduinoAdapter implements DeviceAdapter {
+export class TC4ArduinoAdapter implements RequestResponseDeviceAdapter {
   readonly mode = "request-response" as const;
 
   constructor(private readonly cfg: TC4ArduinoAdapterConfig) {}

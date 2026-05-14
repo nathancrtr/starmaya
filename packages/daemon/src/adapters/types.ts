@@ -22,10 +22,10 @@ import type { ReadingMessage, SensorFaultMessage } from "@starmaya/shared";
  *     never writes polling commands; it simply forwards every received line
  *     to `parse()`.
  */
-export interface DeviceAdapter {
-  /** Selects whether the poller writes polling commands or only reads. */
-  readonly mode: "request-response" | "streaming";
-
+/**
+ * Fields common to every adapter regardless of interaction mode.
+ */
+interface BaseDeviceAdapter {
   /**
    * Called once after the serial port has opened and the poller's
    * `postOpenDelayMs` has elapsed. Use for any device-specific handshake
@@ -33,13 +33,6 @@ export interface DeviceAdapter {
    * means no handshake is required.
    */
   onPortOpened?(): Promise<void>;
-
-  /**
-   * Returns the bytes (or string) to write to the port on each poll. Only
-   * called when `mode === "request-response"`. Must be defined when in that
-   * mode.
-   */
-  getPollCommand?(): string | Buffer;
 
   /**
    * Parse a single line of input from the device.
@@ -54,6 +47,27 @@ export interface DeviceAdapter {
    */
   parse(data: string | Buffer): ParseResult | null;
 }
+
+/**
+ * Adapter for devices the host has to actively poll. The poller writes
+ * `getPollCommand()` on each tick and waits for one line in response.
+ */
+export interface RequestResponseDeviceAdapter extends BaseDeviceAdapter {
+  readonly mode: "request-response";
+  /** Bytes (or string) to write to the port on each poll. */
+  getPollCommand(): string | Buffer;
+}
+
+/**
+ * Adapter for devices that emit lines on their own cadence. The poller
+ * never writes polling commands; every received line is forwarded to
+ * `parse()` directly.
+ */
+export interface StreamingDeviceAdapter extends BaseDeviceAdapter {
+  readonly mode: "streaming";
+}
+
+export type DeviceAdapter = RequestResponseDeviceAdapter | StreamingDeviceAdapter;
 
 /** Discriminated union of what an adapter can produce from a single line. */
 export type ParseResult = ReadingParse | FaultParse;

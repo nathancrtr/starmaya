@@ -9,12 +9,20 @@ import type {
 } from "@starmaya/shared";
 import { intervalMs, readTimeoutMs, type DaemonConfig } from "./config.js";
 import type { DeviceAdapter } from "./adapters/types.js";
-import { TC4ArduinoAdapter } from "./adapters/tc4-arduino.js";
 
 /**
- * Owns the serial port and runs the polling loop. Emits typed events that the
- * socket server forwards to connected clients. Implements the state machine
+ * Owns the serial port, runs the polling/read loop, and emits typed events
+ * that the socket server forwards to clients. Implements the state machine
  * documented in docs/daemon-internals.md.
+ *
+ * Protocol semantics live in an injected {@link DeviceAdapter}; this class
+ * is intentionally hardware-agnostic. It supports two adapter modes:
+ *
+ *   - `request-response`: poller drives the cadence, writes
+ *     `adapter.getPollCommand()` each tick and feeds the reply line to
+ *     `adapter.parse()`.
+ *   - `streaming`: device drives the cadence; every received line is
+ *     forwarded to `adapter.parse()` directly.
  *
  * Events:
  *   - "reading"       (msg: ReadingMessage)
@@ -42,15 +50,14 @@ export class SerialPoller extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private loopTimer: NodeJS.Timeout | null = null;
   private stopped = false;
-  private readonly adapter: DeviceAdapter;
 
   constructor(
     private readonly cfg: DaemonConfig,
+    private readonly adapter: DeviceAdapter,
     private readonly log: (level: string, msg: string, extra?: object) => void,
   ) {
     super();
     this.reconnectDelayMs = cfg.reconnectBackoffInitialMs;
-    this.adapter = new TC4ArduinoAdapter(cfg);
   }
 
   /** Begin polling. Idempotent — calling twice has no additional effect. */
@@ -110,26 +117,46 @@ export class SerialPoller extends EventEmitter {
     }
 
     // Port opened. Wait for the device to finish booting (Arduino Uno
-    // resets on DTR-on-open and takes ~1.5–2s to come back up) before
-    // confirming with a test READ.
+    // resets on DTR-on-open and takes ~1.5–2s to come back up). Devices
+    // that don't reset on open can configure postOpenDelayMs to 0.
     if (this.cfg.postOpenDelayMs > 0) {
       this.log("info", "post_open_delay", { delay_ms: this.cfg.postOpenDelayMs });
       await new Promise((resolve) => setTimeout(resolve, this.cfg.postOpenDelayMs));
       if (this.stopped) return;
     }
 
-    // Confirm with a test READ before declaring connected.
+    // Adapter-specific handshake (banner read, sample-rate config, etc.).
     try {
-      const reading = await this.pollOnce();
-      this.handleReading(reading);
-      this.setState("connected");
-      this.reconnectDelayMs = this.cfg.reconnectBackoffInitialMs; // reset backoff
-      this.scheduleNextPoll(intervalMs(this.cfg));
+      await this.adapter.onPortOpened?.();
     } catch (err) {
-      this.log("warn", "initial_read_failed", { error: (err as Error).message });
-      this.setState("disconnected", `initial_read_failed: ${(err as Error).message}`);
+      this.log("warn", "adapter_init_failed", { error: (err as Error).message });
+      this.setState("disconnected", `adapter_init_failed: ${(err as Error).message}`);
       this.closePort();
       this.scheduleReconnect();
+      return;
+    }
+    if (this.stopped) return;
+
+    if (this.adapter.mode === "request-response") {
+      // Confirm with a test poll before declaring connected.
+      try {
+        const reading = await this.pollOnce();
+        this.handleReading(reading);
+        this.setState("connected");
+        this.reconnectDelayMs = this.cfg.reconnectBackoffInitialMs; // reset backoff
+        this.scheduleNextPoll(intervalMs(this.cfg));
+      } catch (err) {
+        this.log("warn", "initial_read_failed", { error: (err as Error).message });
+        this.setState("disconnected", `initial_read_failed: ${(err as Error).message}`);
+        this.closePort();
+        this.scheduleReconnect();
+      }
+    } else {
+      // Streaming: port-open + onPortOpened succeeding is the strongest
+      // signal until real data arrives. Lines are processed as they come
+      // in via onLine().
+      this.setState("connected");
+      this.reconnectDelayMs = this.cfg.reconnectBackoffInitialMs;
     }
   }
 
@@ -244,6 +271,12 @@ export class SerialPoller extends EventEmitter {
   }
 
   private pollOnce(): Promise<string> {
+    // Local capture so TypeScript narrows the union across the closure.
+    // Only ever reached from request-response paths; the guard is defensive.
+    const adapter = this.adapter;
+    if (adapter.mode !== "request-response") {
+      return Promise.reject(new Error("pollOnce called on non-request-response adapter"));
+    }
     return new Promise((resolve, reject) => {
       if (!this.port || !this.parser) {
         reject(new Error("port not open"));
@@ -258,7 +291,7 @@ export class SerialPoller extends EventEmitter {
         reject(new Error(`read timeout after ${readTimeoutMs(this.cfg)}ms`));
       }, readTimeoutMs(this.cfg));
       this.pending = { resolve, reject, timer };
-      const cmd = this.adapter.getPollCommand!();
+      const cmd = adapter.getPollCommand();
       this.port.write(cmd, (err) => {
         if (err) {
           this.failPending(err);
@@ -268,7 +301,17 @@ export class SerialPoller extends EventEmitter {
   }
 
   private onLine(line: string): void {
-    if (!this.pending) return; // unsolicited line; ignore
+    if (this.adapter.mode === "streaming") {
+      // Drop lines arriving before we've declared connected, so emit
+      // ordering stays predictable for clients (device_status:connected
+      // is always the first thing they see after hello).
+      if (this.state !== "connected") return;
+      this.handleReading(line);
+      return;
+    }
+    // Request-response: resolve the in-flight read if any. Unsolicited
+    // lines (no pending) are dropped.
+    if (!this.pending) return;
     const p = this.pending;
     this.pending = null;
     clearTimeout(p.timer);
