@@ -3,6 +3,7 @@ import { loadConfig, type DaemonConfig } from "./config.js";
 import { SerialPoller } from "./serial-poller.js";
 import { MockSerialPoller } from "./mock-serial-poller.js";
 import { SocketServer, type ReadingSource } from "./socket-server.js";
+import type { DeviceAdapter } from "./adapters/types.js";
 import { TC4ArduinoAdapter } from "./adapters/tc4-arduino.js";
 
 interface CliArgs {
@@ -38,6 +39,22 @@ function makeLogger() {
   };
 }
 
+/**
+ * Instantiate the configured hardware adapter. Extend this switch when
+ * adding new device support; the `never` default makes missing cases a
+ * compile-time error.
+ */
+function makeAdapter(cfg: DaemonConfig): DeviceAdapter {
+  switch (cfg.deviceProfile) {
+    case "tc4":
+      return new TC4ArduinoAdapter(cfg);
+    default: {
+      const _exhaustive: never = cfg.deviceProfile;
+      throw new Error(`Unknown deviceProfile: ${String(_exhaustive)}`);
+    }
+  }
+}
+
 function makeSource(cfg: DaemonConfig, log: ReturnType<typeof makeLogger>): ReadingSource & {
   start(): void;
   stop(): void;
@@ -46,7 +63,8 @@ function makeSource(cfg: DaemonConfig, log: ReturnType<typeof makeLogger>): Read
     log("info", "using_mock_serial", {});
     return new MockSerialPoller(cfg, log);
   }
-  const adapter = new TC4ArduinoAdapter(cfg);
+  const adapter = makeAdapter(cfg);
+  log("info", "device_adapter_selected", { profile: cfg.deviceProfile });
   return new SerialPoller(cfg, adapter, log);
 }
 
