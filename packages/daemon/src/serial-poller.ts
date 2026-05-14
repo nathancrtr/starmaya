@@ -8,6 +8,8 @@ import type {
   SensorFaultMessage,
 } from "@starmaya/shared";
 import { intervalMs, readTimeoutMs, type DaemonConfig } from "./config.js";
+import type { DeviceAdapter } from "./adapters/types.js";
+import { TC4ArduinoAdapter } from "./adapters/tc4-arduino.js";
 
 /**
  * Owns the serial port and runs the polling loop. Emits typed events that the
@@ -40,6 +42,7 @@ export class SerialPoller extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private loopTimer: NodeJS.Timeout | null = null;
   private stopped = false;
+  private readonly adapter: DeviceAdapter;
 
   constructor(
     private readonly cfg: DaemonConfig,
@@ -47,6 +50,7 @@ export class SerialPoller extends EventEmitter {
   ) {
     super();
     this.reconnectDelayMs = cfg.reconnectBackoffInitialMs;
+    this.adapter = new TC4ArduinoAdapter(cfg);
   }
 
   /** Begin polling. Idempotent — calling twice has no additional effect. */
@@ -254,7 +258,8 @@ export class SerialPoller extends EventEmitter {
         reject(new Error(`read timeout after ${readTimeoutMs(this.cfg)}ms`));
       }, readTimeoutMs(this.cfg));
       this.pending = { resolve, reject, timer };
-      this.port.write("READ\r\n", (err) => {
+      const cmd = this.adapter.getPollCommand!();
+      this.port.write(cmd, (err) => {
         if (err) {
           this.failPending(err);
         }
@@ -281,53 +286,38 @@ export class SerialPoller extends EventEmitter {
   // ── Response handling ─────────────────────────────────────────────
 
   /**
-   * Parse a line and emit the appropriate message. Returns the parsed
-   * reading on success, throws on transport-level failure (which the caller
-   * already catches).
+   * Delegate line parsing to the adapter, then stamp `ts` and emit the
+   * appropriate event. Adapter returning `null` means malformed — log and
+   * drop, preserving prior behavior.
    */
   private handleReading(line: string): void {
     const ts = Date.now();
-    const fields = line.trim().split(",");
-    if (fields.length < 2) {
+    const parsed = this.adapter.parse(line);
+    if (parsed === null) {
       this.log("warn", "malformed_response", { line });
       return;
     }
-
-    const btRaw = parseFloat(fields[1]!);
-    const fault = classifyBtFault(btRaw, this.cfg);
-    if (fault) {
-      const msg: SensorFaultMessage = {
-        type: "sensor_fault",
-        ts,
-        raw: line,
-        reason: fault,
-      };
-      this.emit("sensor_fault", msg);
-      return;
+    switch (parsed.kind) {
+      case "reading": {
+        const msg: ReadingMessage = {
+          type: "reading",
+          ts,
+          bt_c: parsed.bt_c,
+          et_c: parsed.et_c,
+        };
+        this.emit("reading", msg);
+        return;
+      }
+      case "fault": {
+        const msg: SensorFaultMessage = {
+          type: "sensor_fault",
+          ts,
+          raw: parsed.raw,
+          reason: parsed.reason,
+        };
+        this.emit("sensor_fault", msg);
+        return;
+      }
     }
-
-    const etRaw = fields[2] !== undefined ? parseFloat(fields[2]) : NaN;
-    const etC = Number.isFinite(etRaw) ? etRaw : null;
-
-    const msg: ReadingMessage = {
-      type: "reading",
-      ts,
-      bt_c: btRaw,
-      et_c: etC,
-    };
-    this.emit("reading", msg);
   }
-}
-
-/**
- * Classify a BT value against MAX31855 error codes and the configured
- * plausibility range. Returns a fault reason or null if the value is OK.
- */
-function classifyBtFault(bt: number, cfg: DaemonConfig): string | null {
-  if (Number.isNaN(bt)) return "bt_nan";
-  if (bt === -1) return "bt_open_circuit";
-  if (bt === -2) return "bt_short_gnd";
-  if (bt === -3) return "bt_short_vcc";
-  if (bt < cfg.btMinPlausibleC || bt > cfg.btMaxPlausibleC) return "bt_out_of_range";
-  return null;
 }
